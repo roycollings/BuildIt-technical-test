@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+valueName=${1:?"Syntax: $0 <pom parameter name>"}
+
+grep "<$valueName>" pom.xml | head -1 | awk 'BEGIN{FS=">"}{print $2}' | awk 'BEGIN{FS="<"}{print $1}'

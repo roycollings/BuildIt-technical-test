@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+# NOTE: PhantomJSDriver needs no Dockerfile because we use an existing image as specified in
+# the project's pom.xml.
+
+binFolder=$(dirname $0)
+
+port=$(${binFolder}/getPomValue runTimeSetting.phantomJSPort)
+imageName=$(${binFolder}/getPomValue runTimeSetting.phantomJSImage)
+containerName=PhantomJSDriver_${port}
+
+# Already running?
+if [ $(docker ps -a | grep -c ${containerName}) -gt 0 ]
+then
+    printf "* PhantomJS web driver container is already running. *\n"
+    exit
+fi
+
+printf "* Starting PhantomJS web driver container *\n"
+docker run \
+    --name ${containerName} \
+    -d \
+    -p ${port}:${port} \
+    --net=host \
+    ${imageName} \
+    --webdriver=${port}

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+[ "$controllerScriptsFolder" != "" ] \
+    && dockerImages=${controllerScriptsFolder}/docker-images \
+    || dockerImages=$(dirname $0)/../docker-images
+
+printf "* Build maven docker image ... *\n"
+docker build --tag=maven3-jdk8-qa:latest ${dockerImages}/maven3-jdk8-qa

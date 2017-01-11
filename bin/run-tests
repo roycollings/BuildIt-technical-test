@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+
+me=$(basename $0)
+binFolder=$(dirname $0)
+mavenContainerName="$(${binFolder}/getPomValue name)_$(${binFolder}/getPomValue runTimeSetting.phantomJSPort)"
+
+syntaxHelp() {
+    echo "
+    Syntax: ./$me [-t <tags>] [-a <application url>]
+
+    Where:
+        -t = scenario tags, i.e. @test1,~@ignore @smoke etc..., one of these for each OR tag.
+        -a = the full url (including protocol, such as \"http://...\") for the site to be tested.
+
+    For example:
+
+        ./$me -t @myTest -a http://myproject.co.uk
+        ./$me -t ~@ignoreme
+
+    "
+    exit 0
+}
+
+
+applicationUrl=""
+tags=""
+features=""
+while getopts "t:a:h" o
+do
+    case "${o}" in
+        t) options="-Dcucumber.options='--tags ${OPTARG}'";;
+        a) applicationUrl="-Dwebsite=${OPTARG}";;
+        h) syntaxHelp;;
+    esac
+done
+
+${binFolder}/startPhantomJSContainer
+${binFolder}/buildMavenImage
+
+# Sudo is required because the report is generated via the container, so owned by root.
+sudo rm -f ./reports/* 2>/dev/null
+
+printf "\nStart tests ...\n"
+exitCode=0
+dump_line="yes"
+
+docker rm -f ${mavenContainerName} 2>/dev/null
+
+time while read line
+do
+    # (Ignores all the Maven 'noise' at the end of the tests.)
+    [ "$dump_line" ] && echo "$line"
+    report_over=$(echo "$line" | egrep -m 1 "^[0-9]* Steps.*")
+    [ "$report_over" != "" ] && dump_line=""
+
+    # Set an exit code so CI machine knows the end results of the test run (0 = pass).
+    [ $(echo "$line" | egrep -c "^[0-9]+ Scenarios (.*failed.*)") -gt 0 ] && exitCode=1
+done< <(eval docker run \
+    --name ${mavenContainerName} \
+    --rm \
+    -i \
+    -v $HOME/.m2:/root/.m2 \
+    -v $(pwd):/usr/src/app \
+    --net=host \
+    maven3-jdk8-qa:latest \
+    mvn clean install \
+    -q \
+    ${applicationUrl} \
+    ${options})
+
+printf "\n(Killing any stray webdriver processes that have been left running ... "
+for proc in $(echo "
+    phantomjs-.*-linux-x86_64
+    and_whatever_other_driver_you_use
+")
+do
+    kill $(ps -ef | egrep $proc | awk '{print $2}') >/dev/null 2>&1
+done
+echo "done.)"
+
+# Only update the report server from a CI run.
+if [ $(hostname | grep -c -i prbmbo) -gt 1 ]
+then
+    printf "\nUpdating report server ... "
+
+    # ... depending on where it is, do it something like this:
+    # scp -i ~/.ssh/reports reports/* ${LOGIN}:${REPORTFOLDER} > /dev/null
+
+    printf "done.\n\n"
+fi
+
+exit ${exitCode}
+
